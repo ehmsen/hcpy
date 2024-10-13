@@ -8,7 +8,6 @@ import sys
 from base64 import urlsafe_b64decode as base64url
 from datetime import datetime
 
-import sslpsk
 import websocket
 from Crypto.Cipher import AES
 from Crypto.Hash import HMAC, SHA256
@@ -23,18 +22,6 @@ def hmac(key, msg):
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-
-
-# Monkey patch for sslpsk in pip using the old _sslobj
-def _sslobj(sock):
-    if (3, 5) <= sys.version_info <= (3, 7):
-        return sock._sslobj._sslobj
-    else:
-        return sock._sslobj
-
-
-sslpsk.sslpsk._sslobj = _sslobj
-
 
 class HCSocket:
     def __init__(self, host, psk64, iv64=None, domain_suffix=""):
@@ -137,12 +124,14 @@ class HCSocket:
         sock.connect((self.host, self.port))
 
         if not self.http:
-            sock = sslpsk.wrap_socket(
-                sock,
-                ssl_version=ssl.PROTOCOL_TLSv1_2,
-                ciphers="ECDHE-PSK-CHACHA20-POLY1305",
-                psk=self.psk,
-            )
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            context.maximum_version = ssl.TLSVersion.TLSv1_2
+            context.set_ciphers('ECDHE-PSK-CHACHA20-POLY1305')
+            context.set_psk_client_callback(lambda hint: (None, self.psk))
+
+            sock = context.wrap_socket(sock)
 
         print(now(), "CON:", self.uri)
         self.ws = websocket.WebSocket()
@@ -177,12 +166,14 @@ class HCSocket:
         sock.connect((self.host, self.port))
 
         if not self.http:
-            sock = sslpsk.wrap_socket(
-                sock,
-                ssl_version=ssl.PROTOCOL_TLSv1_2,
-                ciphers="ECDHE-PSK-CHACHA20-POLY1305",
-                psk=self.psk,
-            )
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            context.maximum_version = ssl.TLSVersion.TLSv1_2
+            context.set_ciphers('ECDHE-PSK-CHACHA20-POLY1305')
+            context.set_psk_client_callback(lambda hint: (None, self.psk))
+
+            sock = context.wrap_socket(sock)
 
         def _on_open(ws):
             self.dprint("on connect")
